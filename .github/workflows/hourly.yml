@@ -1,0 +1,70 @@
+name: Georgian Painter Collector
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+      timezone: "Asia/Tbilisi"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: georgian-painter-hourly
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Collect one painter
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          python src/collector.py | tee run.log
+          ZIP_PATH="$(find output -maxdepth 1 -type f -name '*.zip' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+          test -n "$ZIP_PATH"
+          test -s "$ZIP_PATH"
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$(basename "$ZIP_PATH" .zip)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.collect.outputs.zip_name }}
+          path: ${{ steps.collect.outputs.zip_path }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Persist successful painter history
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- state/history.json; then
+            echo "No history change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/history.json
+          git commit -m "chore: record successful painter run"
+          git push
