@@ -126,8 +126,71 @@ class DownloadedWork:
 class CommonsClient:
     def __init__(self, user_agent: str, timeout: int = 45, session: requests.Session | None = None):
         self.session = session or requests.Session()
-        self.session.headers.update({"User-Agent": user_agent})
+        self.session.headers.update({
+            "User-Agent": user_agent,
+            "Accept": "application/json,text/plain,*/*",
+        })
         self.timeout = timeout
+        self._last_request_at = 0.0
+        self._min_interval = 1.5
+        self._retry_delays = (5, 10, 20, 40, 80, 120)
+
+    def _pace(self) -> None:
+        elapsed = time.monotonic() - self._last_request_at
+        if elapsed < self._min_interval:
+            time.sleep(self._min_interval - elapsed)
+
+    def _get(self, url: str, **kwargs: Any) -> requests.Response:
+        last_error: Exception | None = None
+        for attempt, fallback_wait in enumerate(self._retry_delays, 1):
+            self._pace()
+            try:
+                r = self.session.get(url, timeout=self.timeout, **kwargs)
+                self._last_request_at = time.monotonic()
+            except requests.RequestException as exc:
+                last_error = exc
+                wait = fallback_wait
+                print(f"HTTP transport retry {attempt}/{len(self._retry_delays)} in {wait}s: {exc}", file=sys.stderr)
+                time.sleep(wait)
+                continue
+
+            if r.status_code not in {429, 500, 502, 503, 504}:
+                r.raise_for_status()
+                return r
+
+            retry_after = (r.headers.get("Retry-After") or "").strip()
+            try:
+                wait = float(retry_after)
+            except ValueError:
+                wait = float(fallback_wait)
+            wait = min(max(wait, float(fallback_wait)), 120.0)
+            last_error = requests.HTTPError(
+                f"{r.status_code} from {r.url}; retrying after {wait:.0f}s",
+                response=r,
+            )
+            print(
+                f"HTTP {r.status_code}; retry {attempt}/{len(self._retry_delays)} after {wait:.0f}s",
+                file=sys.stderr,
+            )
+            r.close()
+            time.sleep(wait)
+
+        if last_error:
+            raise last_error
+        raise RuntimeError("HTTP request failed without a response")
+
+    def _api_json(self, params: dict[str, Any]) -> dict[str, Any]:
+        params = {**params, "maxlag": 5}
+        for attempt in range(4):
+            r = self._get(API, params=params)
+            payload = r.json()
+            error = payload.get("error") or {}
+            if error.get("code") != "maxlag":
+                return payload
+            wait = min(10 * (attempt + 1), 40)
+            print(f"Commons maxlag; waiting {wait}s", file=sys.stderr)
+            time.sleep(wait)
+        raise RuntimeError("Commons API remained overloaded (maxlag)")
 
     def category_files(self, category: str, limit: int = 250) -> list[str]:
         titles: list[str] = []
@@ -136,6 +199,7 @@ class CommonsClient:
             params = {
                 "action": "query",
                 "format": "json",
+                "formatversion": 2,
                 "list": "categorymembers",
                 "cmtitle": f"Category:{category}",
                 "cmnamespace": 6,
@@ -144,9 +208,7 @@ class CommonsClient:
             }
             if cont:
                 params["cmcontinue"] = cont
-            r = self.session.get(API, params=params, timeout=self.timeout)
-            r.raise_for_status()
-            payload = r.json()
+            payload = self._api_json(params)
             titles.extend(x["title"] for x in payload.get("query", {}).get("categorymembers", []))
             cont = payload.get("continue", {}).get("cmcontinue")
             if not cont:
@@ -155,29 +217,27 @@ class CommonsClient:
 
     def image_info(self, titles: list[str]) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
-        for start in range(0, len(titles), 20):
-            batch = titles[start:start + 20]
+        for start in range(0, len(titles), 50):
+            batch = titles[start:start + 50]
             params = {
                 "action": "query",
                 "format": "json",
+                "formatversion": 2,
                 "prop": "imageinfo",
                 "titles": "|".join(batch),
                 "iiprop": "url|mime|size|extmetadata",
                 "iiextmetadatalanguage": "en",
             }
-            r = self.session.get(API, params=params, timeout=self.timeout)
-            r.raise_for_status()
-            pages = payload_pages(r.json())
+            payload = self._api_json(params)
+            pages = payload_pages(payload)
             for page in pages:
                 ii = (page.get("imageinfo") or [None])[0]
                 if ii:
                     out.append({"title": page.get("title", ""), **ii})
-            time.sleep(0.08)
         return out
 
     def download(self, url: str, max_bytes: int) -> tuple[bytes, str]:
-        with self.session.get(url, timeout=self.timeout, stream=True, allow_redirects=True) as r:
-            r.raise_for_status()
+        with self._get(url, stream=True, allow_redirects=True) as r:
             mime = (r.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
             declared = int(r.headers.get("Content-Length") or 0)
             if declared and declared > max_bytes:
@@ -190,7 +250,6 @@ class CommonsClient:
                 if len(data) > max_bytes:
                     raise ValueError(f"source exceeded max size: {max_bytes} bytes")
             return bytes(data), mime
-
 
 def payload_pages(payload: dict[str, Any]) -> list[dict[str, Any]]:
     pages = payload.get("query", {}).get("pages", {})
