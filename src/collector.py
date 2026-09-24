@@ -25,6 +25,10 @@ API = "https://commons.wikimedia.org/w/api.php"
 ALLOWED_MIME = {"image/jpeg": ".jpg", "image/png": ".png"}
 
 
+class CommonsRateLimited(RuntimeError):
+    pass
+
+
 def strip_html(value: str | None) -> str:
     if not value:
         return ""
@@ -132,8 +136,8 @@ class CommonsClient:
         })
         self.timeout = timeout
         self._last_request_at = 0.0
-        self._min_interval = 1.5
-        self._retry_delays = (5, 10, 20, 40, 80, 120)
+        self._min_interval = 2.0
+        self._retry_delays = (10, 25, 45)
 
     def _pace(self) -> None:
         elapsed = time.monotonic() - self._last_request_at
@@ -149,9 +153,12 @@ class CommonsClient:
                 self._last_request_at = time.monotonic()
             except requests.RequestException as exc:
                 last_error = exc
-                wait = fallback_wait
-                print(f"HTTP transport retry {attempt}/{len(self._retry_delays)} in {wait}s: {exc}", file=sys.stderr)
-                time.sleep(wait)
+                print(
+                    f"HTTP transport retry {attempt}/{len(self._retry_delays)} "
+                    f"after {fallback_wait}s: {exc}",
+                    file=sys.stderr,
+                )
+                time.sleep(fallback_wait)
                 continue
 
             if r.status_code not in {429, 500, 502, 503, 504}:
@@ -163,13 +170,22 @@ class CommonsClient:
                 wait = float(retry_after)
             except ValueError:
                 wait = float(fallback_wait)
-            wait = min(max(wait, float(fallback_wait)), 120.0)
+            wait = min(max(wait, float(fallback_wait)), 60.0)
+
+            if r.status_code == 429 and attempt == len(self._retry_delays):
+                r.close()
+                raise CommonsRateLimited(
+                    "Wikimedia Commons rate-limited this GitHub runner after "
+                    f"{len(self._retry_delays)} attempts"
+                )
+
             last_error = requests.HTTPError(
                 f"{r.status_code} from {r.url}; retrying after {wait:.0f}s",
                 response=r,
             )
             print(
-                f"HTTP {r.status_code}; retry {attempt}/{len(self._retry_delays)} after {wait:.0f}s",
+                f"HTTP {r.status_code}; retry {attempt}/{len(self._retry_delays)} "
+                f"after {wait:.0f}s",
                 file=sys.stderr,
             )
             r.close()
@@ -181,59 +197,37 @@ class CommonsClient:
 
     def _api_json(self, params: dict[str, Any]) -> dict[str, Any]:
         params = {**params, "maxlag": 5}
-        for attempt in range(4):
+        for attempt in range(3):
             r = self._get(API, params=params)
             payload = r.json()
             error = payload.get("error") or {}
             if error.get("code") != "maxlag":
                 return payload
-            wait = min(10 * (attempt + 1), 40)
+            wait = min(10 * (attempt + 1), 30)
             print(f"Commons maxlag; waiting {wait}s", file=sys.stderr)
             time.sleep(wait)
         raise RuntimeError("Commons API remained overloaded (maxlag)")
 
-    def category_files(self, category: str, limit: int = 250) -> list[str]:
-        titles: list[str] = []
-        cont: str | None = None
-        while len(titles) < limit:
-            params = {
-                "action": "query",
-                "format": "json",
-                "formatversion": 2,
-                "list": "categorymembers",
-                "cmtitle": f"Category:{category}",
-                "cmnamespace": 6,
-                "cmtype": "file",
-                "cmlimit": min(500, limit - len(titles)),
-            }
-            if cont:
-                params["cmcontinue"] = cont
-            payload = self._api_json(params)
-            titles.extend(x["title"] for x in payload.get("query", {}).get("categorymembers", []))
-            cont = payload.get("continue", {}).get("cmcontinue")
-            if not cont:
-                break
-        return titles[:limit]
-
-    def image_info(self, titles: list[str]) -> list[dict[str, Any]]:
+    def category_image_info(self, category: str, limit: int = 80) -> list[dict[str, Any]]:
+        params = {
+            "action": "query",
+            "format": "json",
+            "formatversion": 2,
+            "generator": "categorymembers",
+            "gcmtitle": f"Category:{category}",
+            "gcmnamespace": 6,
+            "gcmtype": "file",
+            "gcmlimit": min(max(limit, 1), 100),
+            "prop": "imageinfo",
+            "iiprop": "url|mime|size|extmetadata",
+            "iiextmetadatalanguage": "en",
+        }
+        payload = self._api_json(params)
         out: list[dict[str, Any]] = []
-        for start in range(0, len(titles), 50):
-            batch = titles[start:start + 50]
-            params = {
-                "action": "query",
-                "format": "json",
-                "formatversion": 2,
-                "prop": "imageinfo",
-                "titles": "|".join(batch),
-                "iiprop": "url|mime|size|extmetadata",
-                "iiextmetadatalanguage": "en",
-            }
-            payload = self._api_json(params)
-            pages = payload_pages(payload)
-            for page in pages:
-                ii = (page.get("imageinfo") or [None])[0]
-                if ii:
-                    out.append({"title": page.get("title", ""), **ii})
+        for page in payload_pages(payload):
+            ii = (page.get("imageinfo") or [None])[0]
+            if ii:
+                out.append({"title": page.get("title", ""), **ii})
         return out
 
     def download(self, url: str, max_bytes: int) -> tuple[bytes, str]:
@@ -332,22 +326,23 @@ def collect_painter(client: CommonsClient, painter: dict[str, Any], settings: di
     with tempfile.TemporaryDirectory(prefix="painter-") as td:
         root = Path(td) / safe_name(painter["name"])
         root.mkdir(parents=True, exist_ok=True)
-        candidates: list[tuple[str, str]] = []
+        infos: list[dict[str, Any]] = []
+        folder_by_title: dict[str, str] = {}
         seen_titles: set[str] = set()
+        per_category_limit = min(max(max_images * 3, min_images * 3), 100)
 
         for cat in painter["categories"]:
             folder = cat.get("folder") or "Works"
-            for title in client.category_files(cat["name"], limit=300):
-                if title in seen_titles:
+            for info in client.category_image_info(cat["name"], limit=per_category_limit):
+                title = info.get("title", "")
+                if not title or title in seen_titles:
                     continue
                 seen_titles.add(title)
-                candidates.append((title, folder))
+                folder_by_title[title] = folder
+                infos.append(info)
 
-        if not candidates:
+        if not infos:
             return None
-
-        folder_by_title = dict(candidates)
-        infos = client.image_info([t for t, _ in candidates])
         works: list[DownloadedWork] = []
         sha_seen: set[str] = set()
         artwork_seen: set[str] = set()
@@ -485,6 +480,13 @@ def run(config_path: Path, history_path: Path, output_dir: Path) -> int:
         print(f"Trying {painter['name']}...", flush=True)
         try:
             result = collect_painter(client, painter, settings, output_dir)
+        except CommonsRateLimited as exc:
+            print(
+                f"Commons is rate-limiting the GitHub runner: {exc}. "
+                "Stopping this run instead of hammering the service.",
+                file=sys.stderr,
+            )
+            return 4
         except Exception as exc:
             print(f"Candidate {painter['name']} failed: {exc}", file=sys.stderr)
             continue
