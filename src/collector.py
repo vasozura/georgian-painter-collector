@@ -369,11 +369,13 @@ def collect_painter(client: CommonsClient, painter: dict[str, Any], settings: di
             if art_key and art_key in artwork_seen:
                 continue
 
-            url = info.get("url")
+            url = info.get("thumburl") or info.get("url")
             if not url:
                 continue
             try:
                 data, response_mime = client.download(url, max_source_bytes)
+            except CommonsRateLimited:
+                raise
             except Exception as exc:
                 print(f"SKIP download {title}: {exc}", file=sys.stderr)
                 continue
