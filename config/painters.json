@@ -1,0 +1,113 @@
+{
+  "settings": {
+    "min_images": 8,
+    "max_images": 25,
+    "max_source_bytes": 83886080,
+    "request_timeout_seconds": 45,
+    "user_agent": "GeorgianPainterCollector/1.0 (GitHub Actions; Wikimedia Commons reuse archive)"
+  },
+  "painters": [
+    {
+      "name": "Niko Pirosmani",
+      "name_ka": "ნიკო ფიროსმანი",
+      "years": "1862–1918",
+      "styles": ["Naïve art", "Primitivism"],
+      "require_artist_match": false,
+      "categories": [{"name": "Paintings by Niko Pirosmani", "folder": "Works"}]
+    },
+    {
+      "name": "Petre Otskheli",
+      "name_ka": "პეტრე ოცხელი",
+      "years": "1907–1937",
+      "styles": ["Modernism", "Scenographic constructivism"],
+      "require_artist_match": false,
+      "categories": [
+        {"name": "Petre Otskheli, Uriel Acosta 1929", "folder": "01_Uriel_Acosta_1929"},
+        {"name": "Petre Otskheli, Othello 1933", "folder": "02_Othello_1933"},
+        {"name": "Petre Otskheli, Surami Fortress 1933", "folder": "03_Surami_Fortress_1933"},
+        {"name": "Petre Otskheli, Aprakune Chimchimeli 1934", "folder": "04_Aprakune_Chimchimeli_1934"}
+      ]
+    },
+    {
+      "name": "Shalva Kikodze",
+      "name_ka": "შალვა ქიქოძე",
+      "years": "1894–1921",
+      "styles": ["Modernism", "Expressionism", "Paris School"],
+      "require_artist_match": true,
+      "artist_aliases": ["Shalva Kikodze", "Sh. Kikodze", "შალვა ქიქოძე", "Кикодзе"],
+      "categories": [{"name": "Shalva Kikodze", "folder": "Works"}]
+    },
+    {
+      "name": "Gigo Gabashvili",
+      "name_ka": "გიგო გაბაშვილი",
+      "years": "1862–1936",
+      "styles": ["Realism", "Orientalism"],
+      "require_artist_match": true,
+      "artist_aliases": ["Gigo Gabashvili", "Georgy Gabashvili", "გიგო გაბაშვილი", "Габашвили"],
+      "categories": [{"name": "Gigo Gabashvili", "folder": "Works"}]
+    },
+    {
+      "name": "David Kakabadze",
+      "name_ka": "დავით კაკაბაძე",
+      "years": "1889–1952",
+      "styles": ["Modernism", "Avant-garde", "Abstraction"],
+      "require_artist_match": true,
+      "artist_aliases": ["David Kakabadze", "Davit Kakabadze", "დავით კაკაბაძე", "Какабадзе"],
+      "categories": [{"name": "David Kakabadze", "folder": "Works"}]
+    },
+    {
+      "name": "Alexander Mrevlishvili",
+      "name_ka": "ალექსანდრე მრევლიშვილი",
+      "years": "1866–1933",
+      "styles": ["Realism"],
+      "require_artist_match": true,
+      "artist_aliases": ["Alexander Mrevlishvili", "Aleksandre Mrevlishvili", "ალექსანდრე მრევლიშვილი", "Мревлишвили"],
+      "categories": [{"name": "Alexander Mrevlishvili", "folder": "Works"}]
+    },
+    {
+      "name": "Mose Toidze",
+      "name_ka": "მოსე თოიძე",
+      "years": "1871–1953",
+      "styles": ["Realism", "Academic painting"],
+      "require_artist_match": true,
+      "artist_aliases": ["Mose Toidze", "Moses Toidze", "მოსე თოიძე", "Тоидзе"],
+      "categories": [{"name": "Mose Toidze", "folder": "Works"}]
+    },
+    {
+      "name": "Valerian Sidamon-Eristavi",
+      "name_ka": "ვალერიან სიდამონ-ერისთავი",
+      "years": "1889–1943",
+      "styles": ["Modernism", "Historical painting", "Scenography"],
+      "require_artist_match": true,
+      "artist_aliases": ["Valerian Sidamon-Eristavi", "Valerian Sidamon Eristavi", "ვალერიან სიდამონ-ერისთავი", "Сидамон-Эристави"],
+      "categories": [{"name": "Valerian Sidamon-Eristavi", "folder": "Works"}]
+    },
+    {
+      "name": "Oskar Schmerling",
+      "name_ka": "ოსკარ შმერლინგი",
+      "years": "1863–1938",
+      "styles": ["Genre painting", "Illustration", "Caricature"],
+      "require_artist_match": true,
+      "artist_aliases": ["Oskar Schmerling", "Oscar Schmerling", "ოსკარ შმერლინგი", "Шмерлинг"],
+      "categories": [{"name": "Oskar Schmerling", "folder": "Works"}]
+    },
+    {
+      "name": "Henryk Hryniewski",
+      "name_ka": "ჰენრიხ ჰრინევსკი",
+      "years": "1869–1938",
+      "styles": ["Watercolor", "Illustration", "Architectural documentation"],
+      "require_artist_match": true,
+      "artist_aliases": ["Henryk Hryniewski", "Henrik Hryniewski", "ჰენრიხ ჰრინევსკი", "Гриневский"],
+      "categories": [{"name": "Henryk Hryniewski", "folder": "Works"}]
+    },
+    {
+      "name": "Mikheil Bilanishvili",
+      "name_ka": "მიხეილ ბილანიშვილი",
+      "years": "1901–1934",
+      "styles": ["Cubism", "Modernism"],
+      "require_artist_match": true,
+      "artist_aliases": ["Mikheil Bilanishvili", "Michael Bilanishvili", "მიხეილ ბილანიშვილი", "Биланишвили"],
+      "categories": [{"name": "Mikheil Bilanishvili", "folder": "Works"}]
+    }
+  ]
+}
