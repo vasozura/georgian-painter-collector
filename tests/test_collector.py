@@ -22,7 +22,7 @@ def make_jpeg(seed: int = 1) -> bytes:
 
 
 def test_safe_name():
-    assert safe_name('a:b/c*?') == 'a_b_c__'
+    assert safe_name('a:b/c*?') == 'a_b_c_'
 
 
 def test_license_public_domain():
