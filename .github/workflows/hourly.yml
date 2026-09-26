@@ -2,9 +2,6 @@ name: Georgian Painter Collector
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 * * * *"
-      timezone: "Asia/Tbilisi"
 
 permissions:
   contents: write
